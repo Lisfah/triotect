@@ -137,6 +137,13 @@ The `./scripts/seed.sh` creates these accounts on first run:
 | Student   | `210041004` | `Student4Pass!` | student4@iut.edu.bd |
 | Student   | `210041005` | `Student5Pass!` | student5@iut.edu.bd |
 
+### ID Format Rules
+
+| Account Type | Format | Example | Constraint |
+| ------------ | ------ | ------- | ---------- |
+| **Admin**    | Alphanumeric string | `ADMIN-001` | 1–64 characters, any format |
+| **Student**  | 9-digit IUT number | `210041001` | Exactly 9 digits (enforced by `create-student.sh` and the UI) |
+
 ### Grafana
 
 | Service                 | Username | Password             | URL                   |
@@ -159,12 +166,10 @@ The `./scripts/seed.sh` creates these accounts on first run:
 > **Note:** `seed.sh` is idempotent — re-running it skips already-existing records
 > (`ON CONFLICT DO NOTHING`). Safe to run multiple times.
 
-### Registration API
-
-Anyone can self-register via the API:
+### Registration & Account Management API
 
 ```bash
-# Register a student
+# Register a student (9-digit ID required)
 curl -s -X POST http://localhost:8001/auth/register \
   -H "Content-Type: application/json" \
   -d '{"student_id":"210041001","email":"you@iut.edu.bd",
@@ -174,7 +179,14 @@ curl -s -X POST http://localhost:8001/auth/register \
 curl -s -X POST http://localhost:8001/auth/login \
   -H "Content-Type: application/json" \
   -d '{"student_id":"210041001","password":"YourPass123"}'
+
+# Change password
+curl -s -X POST http://localhost:8001/auth/change-password \
+  -H "Content-Type: application/json" \
+  -d '{"student_id":"210041001","current_password":"YourPass123","new_password":"NewPass456"}'
 ```
+
+> The change-password form is also available directly on all login pages (Student UI, Admin Console, Kitchen Board) via the **"Change Password"** link.
 
 ---
 
@@ -208,10 +220,10 @@ curl -s -X POST http://localhost:8001/auth/login \
 | `scripts/health-check.sh`   | Poll all `/health` endpoints and report status                               |
 | `scripts/generate-certs.sh` | Generate SSL certs (`local` = self-signed, `staging`/`prod` = Let's Encrypt) |
 | `scripts/reset.sh`          | Wipe transactional data, preserve config, restart services                   |
-| `scripts/add-admin.sh`      | Interactively create a new admin account                                     |
+| `scripts/add-admin.sh`      | Interactively create a new admin account (any ID format)                     |
 | `scripts/delete-admin.sh`   | Interactively delete an admin account (requires password confirmation)       |
 | `scripts/list-admins.sh`    | List all admin accounts (ID, name, email, status)                            |
-| `scripts/create-student.sh` | Interactively create a student account (validates 9-digit IUT ID format)     |
+| `scripts/create-student.sh` | Interactively create a student account (enforces 9-digit IUT ID format)      |
 
 ---
 
