@@ -139,10 +139,10 @@ The `./scripts/seed.sh` creates these accounts on first run:
 
 ### ID Format Rules
 
-| Account Type | Format | Example | Constraint |
-| ------------ | ------ | ------- | ---------- |
-| **Admin**    | Alphanumeric string | `ADMIN-001` | 1–64 characters, any format |
-| **Student**  | 9-digit IUT number | `210041001` | Exactly 9 digits (enforced by `create-student.sh` and the UI) |
+| Account Type | Format              | Example     | Constraint                                                    |
+| ------------ | ------------------- | ----------- | ------------------------------------------------------------- |
+| **Admin**    | Alphanumeric string | `ADMIN-001` | 1–64 characters, any format                                   |
+| **Student**  | 9-digit IUT number  | `210041001` | Exactly 9 digits (enforced by `create-student.sh` and the UI) |
 
 ### Grafana
 
