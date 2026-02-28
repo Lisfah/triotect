@@ -624,7 +624,10 @@ function OrderCard({
   };
 
   const canAdvance = order.status !== "ready" && order.status !== "failed";
-  const canRevert = order.status === "ready";
+  const canRevert =
+    order.status === "stock_verified" ||
+    order.status === "in_kitchen" ||
+    order.status === "ready";
 
   return (
     <div
@@ -712,17 +715,22 @@ function OrderCard({
         <div
           style={{
             display: "flex",
-            justifyContent: canRevert ? "flex-start" : "flex-end",
+            justifyContent:
+              canAdvance && canRevert
+                ? "space-between"
+                : canRevert
+                ? "flex-start"
+                : "flex-end",
             marginTop: "0.5rem",
             paddingTop: "0.5rem",
             borderTop: "1px solid var(--card-border)",
           }}
         >
-          {canRevert ? (
+          {canRevert && (
             <button
               onClick={handleRevert}
               disabled={busy}
-              title="Revert to In Kitchen"
+              title="Revert to previous stage"
               style={{
                 background: "rgba(239,68,68,0.1)",
                 border: "1px solid rgba(239,68,68,0.3)",
@@ -738,7 +746,8 @@ function OrderCard({
             >
               {busy ? "…" : "←"}
             </button>
-          ) : (
+          )}
+          {canAdvance && (
             <button
               onClick={handleAdvance}
               disabled={busy}
