@@ -185,6 +185,19 @@ export default function KitchenPage() {
     setLoading(false);
   }, []);
 
+  // ── Manually advance / revert an order ───────────────────────────────────
+  const moveOrder = useCallback(
+    async (orderId: string, direction: "advance" | "revert") => {
+      try {
+        await fetch(`${KITCHEN_URL}/kitchen/orders/${orderId}/${direction}`, {
+          method: "POST",
+        });
+        await fetchOrders();
+      } catch {}
+    },
+    [fetchOrders],
+  );
+
   useEffect(() => {
     if (!token) return;
     fetchOrders();
@@ -513,6 +526,8 @@ export default function KitchenPage() {
                       color={col.color}
                       bg={col.bg}
                       isNew={newOrderIds.has(order.order_id)}
+                      onAdvance={() => moveOrder(order.order_id, "advance")}
+                      onRevert={() => moveOrder(order.order_id, "revert")}
                     />
                   ))
                 )}
@@ -576,17 +591,40 @@ function OrderCard({
   color,
   bg,
   isNew,
+  onAdvance,
+  onRevert,
 }: {
   order: KitchenOrder;
   color: string;
   bg: string;
   isNew: boolean;
+  onAdvance: () => void;
+  onRevert: () => void;
 }) {
   const [, setTick] = useState(0);
+  const [busy, setBusy] = useState(false);
+
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 10000);
     return () => clearInterval(t);
   }, []);
+
+  const handleAdvance = async () => {
+    if (busy) return;
+    setBusy(true);
+    await onAdvance();
+    setBusy(false);
+  };
+
+  const handleRevert = async () => {
+    if (busy) return;
+    setBusy(true);
+    await onRevert();
+    setBusy(false);
+  };
+
+  const canAdvance = order.status !== "ready" && order.status !== "failed";
+  const canRevert = order.status === "ready";
 
   return (
     <div
@@ -600,6 +638,7 @@ function OrderCard({
         boxShadow: isNew ? `0 0 12px ${color}44` : "none",
       }}
     >
+      {/* Order ID + elapsed */}
       <div
         style={{
           display: "flex",
@@ -621,6 +660,8 @@ function OrderCard({
           {elapsed(order.created_at)}
         </span>
       </div>
+
+      {/* Student */}
       <div
         style={{
           fontSize: "0.78rem",
@@ -630,6 +671,8 @@ function OrderCard({
       >
         👤 {order.student_id}
       </div>
+
+      {/* Items */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
         {order.items.map((it, i) => {
           const m = MENU_MAP[it.menu_item_id];
@@ -649,6 +692,8 @@ function OrderCard({
           );
         })}
       </div>
+
+      {/* Notes */}
       {order.special_notes && (
         <div
           style={{
@@ -659,6 +704,61 @@ function OrderCard({
           }}
         >
           📝 {order.special_notes}
+        </div>
+      )}
+
+      {/* Action button */}
+      {(canAdvance || canRevert) && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: canRevert ? "flex-start" : "flex-end",
+            marginTop: "0.5rem",
+            paddingTop: "0.5rem",
+            borderTop: "1px solid var(--card-border)",
+          }}
+        >
+          {canRevert ? (
+            <button
+              onClick={handleRevert}
+              disabled={busy}
+              title="Revert to In Kitchen"
+              style={{
+                background: "rgba(239,68,68,0.1)",
+                border: "1px solid rgba(239,68,68,0.3)",
+                borderRadius: "6px",
+                color: "var(--danger)",
+                cursor: busy ? "not-allowed" : "pointer",
+                fontSize: "1rem",
+                lineHeight: 1,
+                padding: "0.25rem 0.65rem",
+                opacity: busy ? 0.5 : 1,
+                transition: "opacity 0.15s",
+              }}
+            >
+              {busy ? "…" : "←"}
+            </button>
+          ) : (
+            <button
+              onClick={handleAdvance}
+              disabled={busy}
+              title="Advance to next stage"
+              style={{
+                background: "rgba(34,197,94,0.1)",
+                border: "1px solid rgba(34,197,94,0.3)",
+                borderRadius: "6px",
+                color: "#22c55e",
+                cursor: busy ? "not-allowed" : "pointer",
+                fontSize: "1rem",
+                lineHeight: 1,
+                padding: "0.25rem 0.65rem",
+                opacity: busy ? 0.5 : 1,
+                transition: "opacity 0.15s",
+              }}
+            >
+              {busy ? "…" : "→"}
+            </button>
+          )}
         </div>
       )}
     </div>

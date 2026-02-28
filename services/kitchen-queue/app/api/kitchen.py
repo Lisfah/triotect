@@ -4,12 +4,11 @@ Kitchen Queue — FastAPI routes
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from pydantic import BaseModel, Field
 
 from app.db.database import get_db
 from app.models.order import Order, OrderItem, OrderStatus
-from app.tasks.kitchen_tasks import process_order
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -45,13 +44,6 @@ async def queue_order(payload: QueueRequest, db: AsyncSession = Depends(get_db))
         ))
 
     await db.commit()
-
-    process_order.delay(
-        order_id=payload.order_id,
-        student_id=payload.student_id,
-        items=payload.items,
-        special_notes=payload.special_notes,
-    )
 
     return {
         "order_id": payload.order_id,
@@ -139,3 +131,56 @@ async def list_all_orders(
         })
 
     return out
+
+
+# ── Manual status transition maps ─────────────────────────────────────────────
+NEXT_STATUS: dict[str, str] = {
+    "PENDING":        "STOCK_VERIFIED",
+    "STOCK_VERIFIED": "IN_KITCHEN",
+    "IN_KITCHEN":     "READY",
+}
+PREV_STATUS: dict[str, str] = {
+    "READY":          "IN_KITCHEN",
+    "IN_KITCHEN":     "STOCK_VERIFIED",
+    "STOCK_VERIFIED": "PENDING",
+}
+
+
+@router.post("/orders/{order_id}/advance", status_code=200)
+async def advance_order(order_id: str, db: AsyncSession = Depends(get_db)):
+    """Manually advance an order to the next stage (kitchen staff action)."""
+    row = (await db.execute(
+        text("SELECT status::text FROM orders WHERE id = :id"), {"id": order_id}
+    )).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found.")
+    current = row[0]
+    next_s = NEXT_STATUS.get(current)
+    if not next_s:
+        raise HTTPException(status_code=400, detail=f"Cannot advance order from status '{current}'.")
+    await db.execute(
+        text("UPDATE orders SET status = CAST(:s AS order_status), updated_at = NOW() WHERE id = :id"),
+        {"s": next_s, "id": order_id},
+    )
+    await db.commit()
+    return {"order_id": order_id, "status": next_s.lower()}
+
+
+@router.post("/orders/{order_id}/revert", status_code=200)
+async def revert_order(order_id: str, db: AsyncSession = Depends(get_db)):
+    """Manually revert an order to the previous stage (error correction)."""
+    row = (await db.execute(
+        text("SELECT status::text FROM orders WHERE id = :id"), {"id": order_id}
+    )).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found.")
+    current = row[0]
+    prev_s = PREV_STATUS.get(current)
+    if not prev_s:
+        raise HTTPException(status_code=400, detail=f"Cannot revert order from status '{current}'.")
+    await db.execute(
+        text("UPDATE orders SET status = CAST(:s AS order_status), updated_at = NOW() WHERE id = :id"),
+        {"s": prev_s, "id": order_id},
+    )
+    await db.commit()
+    return {"order_id": order_id, "status": prev_s.lower()}
