@@ -115,7 +115,26 @@ async def create_order(payload: OrderRequest, request: Request):
     )
 
 
+@router.get("")
+async def list_orders(request: Request):
+    """List all orders for the authenticated student."""
+    user = request.state.user
+    student_id = user.get("student_id")
+    try:
+        async with httpx.AsyncClient(timeout=settings.HTTP_TIMEOUT_SECONDS) as client:
+            r = await client.get(
+                f"{settings.KITCHEN_QUEUE_URL}/kitchen/orders",
+                params={"student_id": student_id},
+            )
+            if r.is_success:
+                return r.json()
+            raise HTTPException(status_code=r.status_code, detail="Failed to fetch orders.")
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=503, detail=f"Kitchen Queue unreachable: {exc}")
+
+
 @router.get("/{order_id}")
+
 async def get_order_status(order_id: str, request: Request):
     """Get order status from Kitchen Queue service."""
     try:

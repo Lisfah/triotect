@@ -1,6 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
-import styles from './page.module.css';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 const IDENTITY_URL = process.env.NEXT_PUBLIC_IDENTITY_URL || 'http://localhost:8001';
 const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8002';
@@ -17,6 +16,14 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   failed: '❌ Failed',
 };
 
+const STATUS_COLORS: Record<OrderStatus, string> = {
+  pending: '#f59e0b',
+  stock_verified: '#3b82f6',
+  in_kitchen: '#8b5cf6',
+  ready: '#22c55e',
+  failed: '#ef4444',
+};
+
 const MENU_ITEMS = [
   { id: 'ITEM-BIRIYANI', name: 'Chicken Biriyani', price: 450, emoji: '🍗' },
   { id: 'ITEM-KEBAB', name: 'Beef Kebab', price: 350, emoji: '🥩' },
@@ -25,6 +32,19 @@ const MENU_ITEMS = [
   { id: 'ITEM-DATE', name: 'Medjool Dates', price: 150, emoji: '🫐' },
   { id: 'ITEM-SAMOSA', name: 'Samosa', price: 50, emoji: '🥟' },
 ];
+
+const MENU_MAP: Record<string, { name: string; emoji: string }> = Object.fromEntries(
+  MENU_ITEMS.map(i => [i.id, { name: i.name, emoji: i.emoji }])
+);
+
+interface OrderItem { menu_item_id: string; quantity: number; }
+interface HistoryOrder {
+  order_id: string;
+  status: OrderStatus;
+  created_at: string | null;
+  special_notes: string | null;
+  items: OrderItem[];
+}
 
 export default function StudentPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -39,9 +59,36 @@ export default function StudentPage() {
   const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null);
   const [orderError, setOrderError] = useState('');
 
+  const [orderHistory, setOrderHistory] = useState<HistoryOrder[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   const esRef = useRef<EventSource | null>(null);
 
-  // ── Login ─────────────────────────────────────────────────────────────────
+  // ── Fetch order history ──────────────────────────────────────────────────────
+  const fetchHistory = useCallback(async (jwt: string) => {
+    setHistoryLoading(true);
+    try {
+      const r = await fetch(`${GATEWAY_URL}/orders`, {
+        headers: { 'Authorization': `Bearer ${jwt}` },
+      });
+      if (r.ok) setOrderHistory(await r.json());
+    } catch {}
+    finally { setHistoryLoading(false); }
+  }, []);
+
+  // Refresh history whenever a new order lands or on login
+  useEffect(() => {
+    if (token) fetchHistory(token);
+  }, [token, orderId, fetchHistory]);
+
+  // Also refresh when current order status changes to terminal state
+  useEffect(() => {
+    if (token && (orderStatus === 'ready' || orderStatus === 'failed')) {
+      fetchHistory(token);
+    }
+  }, [orderStatus, token, fetchHistory]);
+
+  // ── Login ────────────────────────────────────────────────────────────────────
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginLoading(true);
@@ -54,22 +101,20 @@ export default function StudentPage() {
       });
       const data = await r.json();
       if (!r.ok) {
-        if (r.status === 429) {
-          setLoginError(`⏱ Too many attempts. Try again in ${data.retry_after_seconds}s.`);
-        } else {
-          setLoginError(data.detail || 'Login failed.');
-        }
+        setLoginError(r.status === 429
+          ? `⏱ Too many attempts. Try again in ${data.retry_after_seconds}s.`
+          : data.detail || 'Login failed.');
         return;
       }
       setToken(data.access_token);
-    } catch (err) {
+    } catch {
       setLoginError('Network error. Please try again.');
     } finally {
       setLoginLoading(false);
     }
   };
 
-  // ── Cart ──────────────────────────────────────────────────────────────────
+  // ── Cart ─────────────────────────────────────────────────────────────────────
   const updateCart = (id: string, delta: number) => {
     setCart(prev => {
       const next = { ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) };
@@ -80,7 +125,7 @@ export default function StudentPage() {
 
   const totalItems = Object.values(cart).reduce((a, b) => a + b, 0);
 
-  // ── Place Order ───────────────────────────────────────────────────────────
+  // ── Place Order ──────────────────────────────────────────────────────────────
   const handlePlaceOrder = async () => {
     if (!token || totalItems === 0) return;
     setOrdering(true);
@@ -102,16 +147,12 @@ export default function StudentPage() {
         body: JSON.stringify({ items }),
       });
       const data = await r.json();
-      if (!r.ok) {
-        setOrderError(data.detail || 'Order failed.');
-        return;
-      }
+      if (!r.ok) { setOrderError(data.detail || 'Order failed.'); return; }
       setOrderId(data.order_id);
       setOrderStatus('pending');
       setCart({});
-      // Start SSE stream
       startSSE(data.order_id);
-    } catch (err) {
+    } catch {
       setOrderError('Network error. Is the gateway running?');
     } finally {
       setOrdering(false);
@@ -134,7 +175,13 @@ export default function StudentPage() {
 
   useEffect(() => () => { esRef.current?.close(); }, []);
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  const formatTime = (iso: string | null) => {
+    if (!iso) return '';
+    return new Date(iso).toLocaleString();
+  };
+
+  // ── Login page ───────────────────────────────────────────────────────────────
   if (!token) {
     return (
       <main className="container" style={{ paddingTop: '4rem' }}>
@@ -169,11 +216,13 @@ export default function StudentPage() {
 
   return (
     <main className="container" style={{ paddingTop: '2rem', paddingBottom: '4rem' }}>
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>🍱 Iftar Menu</h1>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>👤 {studentId}</span>
-          <button className="btn btn-danger" onClick={() => { setToken(null); setCart({}); }} style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>Logout</button>
+          <button className="btn btn-danger" onClick={() => { setToken(null); setCart({}); setOrderHistory([]); }}
+            style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>Logout</button>
         </div>
       </div>
 
@@ -197,7 +246,7 @@ export default function StudentPage() {
         ))}
       </div>
 
-      {/* Order Button */}
+      {/* Cart / Order Button */}
       {totalItems > 0 && (
         <div className="card animate-fade-in" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontWeight: 600 }}>{totalItems} item{totalItems !== 1 ? 's' : ''} in cart</span>
@@ -213,10 +262,10 @@ export default function StudentPage() {
         </div>
       )}
 
-      {/* Order Status */}
+      {/* Live Order Status (current session) */}
       {orderId && orderStatus && (
-        <div className="card animate-fade-in">
-          <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem' }}>📦 Order #{orderId.slice(-8)}</h2>
+        <div className="card animate-fade-in" style={{ marginBottom: '2rem' }}>
+          <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem' }}>📦 Current Order #{orderId.slice(-8)}</h2>
           <div className="status-steps">
             {STATUS_STEPS.map(step => (
               <div key={step} className={`status-step ${
@@ -239,6 +288,79 @@ export default function StudentPage() {
           )}
         </div>
       )}
+
+      {/* Order History */}
+      <div className="card" style={{ marginTop: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>📋 My Orders</h2>
+          <button className="btn btn-primary" onClick={() => token && fetchHistory(token)}
+            style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem' }} disabled={historyLoading}>
+            {historyLoading ? '↻ Loading…' : '↻ Refresh'}
+          </button>
+        </div>
+
+        {historyLoading && orderHistory.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1.5rem 0' }}>Loading orders…</p>
+        ) : orderHistory.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1.5rem 0' }}>No orders yet. Place your first order above!</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {orderHistory.map(order => {
+              const statusColor = STATUS_COLORS[order.status] || '#6b7280';
+              return (
+                <div key={order.order_id} style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: '0.75rem',
+                  padding: '0.9rem 1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.4rem',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                      #{order.order_id.slice(-8)}
+                    </span>
+                    <span style={{
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '999px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      background: `${statusColor}22`,
+                      color: statusColor,
+                      border: `1px solid ${statusColor}44`,
+                    }}>
+                      {STATUS_LABELS[order.status] ?? order.status}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {formatTime(order.created_at)}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.2rem' }}>
+                    {order.items.map((it, idx) => {
+                      const m = MENU_MAP[it.menu_item_id];
+                      return (
+                        <span key={idx} style={{
+                          background: 'var(--surface)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '0.5rem',
+                          padding: '0.15rem 0.5rem',
+                        }}>
+                          {m ? `${m.emoji} ${m.name}` : it.menu_item_id} × {it.quantity}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  {order.special_notes && (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      Note: {order.special_notes}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </main>
   );
 }

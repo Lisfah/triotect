@@ -105,7 +105,7 @@ services:
       update_config:
         parallelism: 1
         delay: 10s
-        order: rolling-update
+        order: start-first
     restart: unless-stopped
 
   order-gateway:
