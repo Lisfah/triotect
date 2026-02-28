@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 
+const IDENTITY_URL = process.env.NEXT_PUBLIC_IDENTITY_URL || 'http://localhost:8001';
 const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:8002';
 const PROMETHEUS_URL = process.env.NEXT_PUBLIC_PROMETHEUS_URL || 'http://localhost:9090';
 const GRAFANA_URL = process.env.NEXT_PUBLIC_GRAFANA_URL || 'http://localhost:3002';
@@ -8,15 +9,30 @@ const NOTIFICATION_URL = process.env.NEXT_PUBLIC_NOTIFICATION_URL || 'http://loc
 
 const SERVICES = [
   { id: 'identity-provider', name: 'Identity Provider', url: 'http://localhost:8001/health', port: 8001 },
-  { id: 'order-gateway', name: 'Order Gateway', url: 'http://localhost:8002/health', port: 8002 },
-  { id: 'stock-service', name: 'Stock Service', url: 'http://localhost:8003/health', port: 8003 },
-  { id: 'kitchen-queue', name: 'Kitchen Queue', url: 'http://localhost:8004/health', port: 8004 },
-  { id: 'notification-hub', name: 'Notification Hub', url: 'http://localhost:8005/health', port: 8005 },
+  { id: 'order-gateway',     name: 'Order Gateway',     url: 'http://localhost:8002/health', port: 8002 },
+  { id: 'stock-service',     name: 'Stock Service',     url: 'http://localhost:8003/health', port: 8003 },
+  { id: 'kitchen-queue',     name: 'Kitchen Queue',     url: 'http://localhost:8004/health', port: 8004 },
+  { id: 'notification-hub',  name: 'Notification Hub',  url: 'http://localhost:8005/health', port: 8005 },
 ];
 
 type ServiceStatus = { status: 'healthy' | 'degraded' | 'unknown' | 'checking'; dependencies?: Record<string, string> };
 
+/** Decode JWT payload without verifying signature (public fields only). */
+function parseJwt(token: string): Record<string, unknown> | null {
+  try {
+    const payload = token.split('.')[1];
+    return JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+  } catch { return null; }
+}
+
 export default function AdminPage() {
+  const [token, setToken] = useState<string | null>(null);
+  const [adminId, setAdminId] = useState('');
+  const [loginId, setLoginId] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+
   const [serviceStatuses, setServiceStatuses] = useState<Record<string, ServiceStatus>>({});
   const [gatewayLatency, setGatewayLatency] = useState<number | null>(null);
   const [latencyAlert, setLatencyAlert] = useState(false);
@@ -24,6 +40,39 @@ export default function AdminPage() {
   const [chaosLoading, setChaosLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<string>('');
 
+  // ── Login ────────────────────────────────────────────────────────────────────
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    setLoginError('');
+    try {
+      const r = await fetch(`${IDENTITY_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ student_id: loginId, password }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setLoginError(r.status === 429
+          ? `⏱ Too many attempts. Retry in ${data.retry_after_seconds}s.`
+          : data.detail || 'Login failed.');
+        return;
+      }
+      const claims = parseJwt(data.access_token);
+      if (!claims?.is_admin) {
+        setLoginError('Access denied: administrator account required.');
+        return;
+      }
+      setToken(data.access_token);
+      setAdminId(loginId);
+    } catch {
+      setLoginError('Network error. Please try again.');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  // ── Service health polling ───────────────────────────────────────────────────
   const checkAllServices = useCallback(async () => {
     setLastRefresh(new Date().toLocaleTimeString());
     for (const svc of SERVICES) {
@@ -47,7 +96,6 @@ export default function AdminPage() {
     }
   }, []);
 
-  // Check chaos status
   const checkChaos = useCallback(async () => {
     try {
       const r = await fetch(`${NOTIFICATION_URL}/notifications/chaos`);
@@ -67,13 +115,13 @@ export default function AdminPage() {
     setChaosLoading(false);
   };
 
-  // Auto-refresh every 15s
   useEffect(() => {
+    if (!token) return;
     checkAllServices();
     checkChaos();
     const interval = setInterval(() => { checkAllServices(); checkChaos(); }, 15000);
     return () => clearInterval(interval);
-  }, [checkAllServices, checkChaos]);
+  }, [token, checkAllServices, checkChaos]);
 
   const getStatusColor = (status: string) => {
     if (status === 'healthy') return 'var(--success)';
@@ -83,6 +131,88 @@ export default function AdminPage() {
 
   const healthyCount = Object.values(serviceStatuses).filter(s => s.status === 'healthy').length;
 
+  // ── Login screen ─────────────────────────────────────────────────────────────
+  if (!token) {
+    return (
+      <main className="container" style={{ paddingTop: '4rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
+          <h1 style={{
+            fontSize: '2rem', fontWeight: 700,
+            background: 'linear-gradient(135deg, #6C63FF, #FF6584)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+          }}>
+            ⚙️ TrioTect Admin Console
+          </h1>
+          <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+            IUT Cafeteria — Distributed System Monitor
+          </p>
+        </div>
+
+        <div className="card animate-fade-in" style={{ maxWidth: '420px', margin: '0 auto' }}>
+          <h2 style={{ marginBottom: '1.5rem', fontSize: '1.15rem', fontWeight: 600 }}>
+            🔐 Administrator Login
+          </h2>
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+                Admin ID
+              </label>
+              <input
+                id="admin-id"
+                value={loginId}
+                onChange={e => setLoginId(e.target.value)}
+                placeholder="ADMIN-001"
+                required
+                style={{
+                  width: '100%', padding: '0.625rem 0.875rem',
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--card-border)',
+                  borderRadius: '8px', color: 'var(--text)', fontSize: '0.95rem', outline: 'none',
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+                Password
+              </label>
+              <input
+                id="admin-password"
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                style={{
+                  width: '100%', padding: '0.625rem 0.875rem',
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--card-border)',
+                  borderRadius: '8px', color: 'var(--text)', fontSize: '0.95rem', outline: 'none',
+                }}
+              />
+            </div>
+            {loginError && (
+              <p style={{ color: 'var(--danger)', fontSize: '0.875rem', padding: '0.5rem 0.75rem',
+                background: 'rgba(239,68,68,0.08)', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                ❌ {loginError}
+              </p>
+            )}
+            <button
+              id="login-btn"
+              className="btn btn-primary"
+              type="submit"
+              disabled={loginLoading}
+              style={{ marginTop: '0.25rem', justifyContent: 'center', fontSize: '0.95rem' }}
+            >
+              {loginLoading ? <span className="animate-pulse">Authenticating…</span> : 'Login to Console →'}
+            </button>
+          </form>
+          <p style={{ marginTop: '1.25rem', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+            Admin accounts only. Student accounts will be rejected.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  // ── Dashboard ────────────────────────────────────────────────────────────────
   return (
     <main className="container" style={{ paddingTop: '2rem', paddingBottom: '4rem' }}>
       {/* Header */}
@@ -92,13 +222,20 @@ export default function AdminPage() {
             TrioTect Admin Console
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            IUT Cafeteria — Distributed System Monitor
+            IUT Cafeteria — Distributed System Monitor &nbsp;·&nbsp; 👤 {adminId}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Last refresh: {lastRefresh}</span>
-          <button id="refresh-btn" className="btn btn-primary" onClick={() => { checkAllServices(); checkChaos(); }} style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}>
+          <button id="refresh-btn" className="btn btn-primary"
+            onClick={() => { checkAllServices(); checkChaos(); }}
+            style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}>
             ↻ Refresh
+          </button>
+          <button className="btn btn-danger"
+            onClick={() => { setToken(null); setAdminId(''); }}
+            style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}>
+            Logout
           </button>
         </div>
       </div>
@@ -110,8 +247,7 @@ export default function AdminPage() {
           <div>
             <p style={{ color: 'var(--danger)', fontWeight: 700 }}>ALERT: Order Gateway Latency Critical!</p>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-              Average response time is {gatewayLatency}ms — exceeds 1000ms threshold (PromQL rule triggered).
-              System may be under saturation.
+              Average response time is {gatewayLatency}ms — exceeds 1000ms threshold. System may be under saturation.
             </p>
           </div>
         </div>
@@ -195,10 +331,10 @@ export default function AdminPage() {
                 </p>
               </div>
               <div style={{ width: '60px', height: '32px', borderRadius: '999px',
-                background: chaosActive ? 'var(--danger)' : '#333', cursor: 'pointer',
-                position: 'relative', transition: 'background 0.3s' }}
+                background: chaosActive ? 'var(--danger)' : '#333', cursor: chaosLoading ? 'not-allowed' : 'pointer',
+                position: 'relative', transition: 'background 0.3s', opacity: chaosLoading ? 0.6 : 1 }}
                 id="chaos-toggle"
-                onClick={toggleChaos}>
+                onClick={!chaosLoading ? toggleChaos : undefined}>
                 <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'white',
                   position: 'absolute', top: '4px', transition: 'left 0.3s',
                   left: chaosActive ? '32px' : '4px' }} />
@@ -208,9 +344,7 @@ export default function AdminPage() {
           {chaosActive && (
             <div className="animate-fade-in" style={{ padding: '1rem', borderRadius: '8px',
               background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)' }}>
-              <p style={{ color: 'var(--danger)', fontWeight: 600, fontSize: '0.875rem' }}>
-                ⚠️ CHAOS MODE ACTIVE
-              </p>
+              <p style={{ color: 'var(--danger)', fontWeight: 600, fontSize: '0.875rem' }}>⚠️ CHAOS MODE ACTIVE</p>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>
                 Notification Hub is returning 503. Verify that orders still process via Gateway + Stock + Kitchen.
               </p>
@@ -219,7 +353,9 @@ export default function AdminPage() {
 
           {/* Prometheus Quick Links */}
           <div style={{ marginTop: '1.5rem' }}>
-            <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--text-muted)' }}>Quick Prometheus Queries</h3>
+            <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--text-muted)' }}>
+              Quick Prometheus Queries
+            </h3>
             {[
               { label: 'Gateway avg latency (30s)', query: 'sum(rate(http_request_duration_seconds_sum{job="order-gateway"}[30s]))/sum(rate(http_request_duration_seconds_count{job="order-gateway"}[30s]))' },
               { label: 'Total orders (1m)', query: 'sum(increase(http_requests_total{job="order-gateway", status="202"}[1m]))' },
@@ -237,7 +373,7 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Grafana embed placeholder */}
+      {/* Grafana embed */}
       <div className="card" style={{ marginTop: '1.5rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>📊 Grafana Live Metrics</h2>
         <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', overflow: 'hidden' }}>
@@ -248,7 +384,10 @@ export default function AdminPage() {
           />
         </div>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.5rem' }}>
-          Embedded Grafana dashboard. <a href={GRAFANA_URL} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>Open full dashboard →</a>
+          Embedded Grafana dashboard.{' '}
+          <a href={GRAFANA_URL} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>
+            Open full dashboard →
+          </a>
         </p>
       </div>
     </main>
