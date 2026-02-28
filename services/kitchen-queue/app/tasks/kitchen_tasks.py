@@ -26,11 +26,17 @@ sync_engine = create_engine(settings.sync_database_url, pool_pre_ping=True)
 
 
 def _update_order_status(order_id: str, status: str):
-    """Synchronously update order status in DB."""
+    """Synchronously update order status in DB.
+
+    The Postgres enum type uses UPPER_CASE labels (created before the Python
+    model switched to lower-case values).  Raw text() queries bypass SQLAlchemy's
+    ORM enum mapping, so we cast to uppercase explicitly.
+    """
+    db_val = status.upper()          # e.g. "stock_verified" → "STOCK_VERIFIED"
     with Session(sync_engine) as session:
         session.execute(
-            text("UPDATE orders SET status = :status, updated_at = NOW() WHERE id = :id"),
-            {"status": status, "id": order_id},
+            text("UPDATE orders SET status = CAST(:status AS order_status), updated_at = NOW() WHERE id = :id"),
+            {"status": db_val, "id": order_id},
         )
         session.commit()
 
