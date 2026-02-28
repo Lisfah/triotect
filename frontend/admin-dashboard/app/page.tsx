@@ -375,18 +375,26 @@ export default function AdminPage() {
 
       {/* Grafana embed */}
       <div className="card" style={{ marginTop: '1.5rem' }}>
-        <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>📊 Grafana Live Metrics</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: 600 }}>📊 Grafana Live Metrics</h2>
+          <a href={GRAFANA_URL} target="_blank" rel="noreferrer"
+            className="btn btn-primary"
+            style={{ fontSize: '0.8rem', padding: '0.4rem 0.9rem', textDecoration: 'none' }}>
+            Open Grafana ↗
+          </a>
+        </div>
         <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', overflow: 'hidden' }}>
           <iframe
-            src={`${GRAFANA_URL}/d/triotect-overview?orgId=1&refresh=10s&kiosk=tv`}
-            width="100%" height="400" frameBorder="0"
+            src={`${GRAFANA_URL}/?kiosk&orgId=1&refresh=10s`}
+            width="100%" height="420" frameBorder="0"
             style={{ display: 'block' }}
+            title="Grafana Dashboard"
           />
         </div>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.5rem' }}>
-          Embedded Grafana dashboard.{' '}
+          Live Grafana metrics — must be logged in to Grafana for the embed to display.{' '}
           <a href={GRAFANA_URL} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>
-            Open full dashboard →
+            Login / open full dashboard →
           </a>
         </p>
       </div>

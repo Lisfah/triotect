@@ -275,7 +275,7 @@ services:
     environment:
       NEXT_PUBLIC_GATEWAY_URL: http://localhost:8002
       NEXT_PUBLIC_PROMETHEUS_URL: http://localhost:9090
-      NEXT_PUBLIC_GRAFANA_URL: http://localhost:3002
+      NEXT_PUBLIC_GRAFANA_URL: https://localhost/grafana
     ports:
       - "3001:3001"
     networks:
@@ -311,7 +311,10 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_SERVER_ROOT_URL: http://localhost:3002
+      GF_SERVER_ROOT_URL: https://localhost/grafana
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_SECURITY_CONTENT_SECURITY_POLICY: "false"
     volumes:
       - grafana-data:/var/lib/grafana
       - ../../infra/grafana/provisioning:/etc/grafana/provisioning:ro
