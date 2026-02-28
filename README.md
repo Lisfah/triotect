@@ -85,7 +85,7 @@ Access the platform at:
 - **https://localhost** — Student UI (accept browser SSL warning for self-signed cert)
 - **https://localhost/admin/** — Admin Dashboard
 - **https://localhost/api/health** — API Gateway health
-- **http://localhost:3002** — Grafana (admin / see `.env`)
+- **http://localhost:3002** — Grafana (`admin` / `admin` for local dev; change via `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` in `.env`)
 - **http://localhost:9090** — Prometheus
 
 ---
@@ -102,6 +102,14 @@ The `./scripts/seed.sh` creates these accounts on first run:
 | Student | `STU-2021-003` | `Student3Pass!` | student3@iut.edu.bd |
 | Student | `STU-2021-004` | `Student4Pass!` | student4@iut.edu.bd |
 | Student | `STU-2021-005` | `Student5Pass!` | student5@iut.edu.bd |
+
+### Grafana
+
+| Service | Username | Password | URL |
+|---------|----------|----------|-----|
+| **Grafana** (local dev) | `admin` | `admin` | http://localhost:3002 |
+
+> Change via `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` in `deploy/local/.env` before deploying to staging/production.
 
 ### Seed Menu Items
 
