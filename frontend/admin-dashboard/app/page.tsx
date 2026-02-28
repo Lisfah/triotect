@@ -84,6 +84,15 @@ export default function AdminPage() {
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
 
+  const [showChangePw, setShowChangePw] = useState(false);
+  const [cpId, setCpId] = useState("");
+  const [cpCurrentPw, setCpCurrentPw] = useState("");
+  const [cpNewPw, setCpNewPw] = useState("");
+  const [cpConfirmPw, setCpConfirmPw] = useState("");
+  const [cpError, setCpError] = useState("");
+  const [cpSuccess, setCpSuccess] = useState("");
+  const [cpLoading, setCpLoading] = useState(false);
+
   const [serviceStatuses, setServiceStatuses] = useState<
     Record<string, ServiceStatus>
   >({});
@@ -92,6 +101,59 @@ export default function AdminPage() {
   const [chaosActive, setChaosActive] = useState(false);
   const [chaosLoading, setChaosLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<string>("");
+
+  // ── Change Password ──────────────────────────────────────────────────────────
+  const handleChangePw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCpError("");
+    setCpSuccess("");
+    if (cpNewPw !== cpConfirmPw) {
+      setCpError("New passwords do not match.");
+      return;
+    }
+    if (cpNewPw.length < 6) {
+      setCpError("New password must be at least 6 characters.");
+      return;
+    }
+    setCpLoading(true);
+    try {
+      const r = await fetch(`${IDENTITY_URL}/auth/change-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          student_id: cpId,
+          current_password: cpCurrentPw,
+          new_password: cpNewPw,
+        }),
+      });
+      if (!r.ok) {
+        if (r.status === 422) {
+          const data = await r.json();
+          const msg = data.detail?.[0]?.msg ?? data.detail ?? "Invalid input.";
+          setCpError(typeof msg === "string" ? msg : JSON.stringify(msg));
+        } else {
+          const data = await r.json();
+          setCpError(data.detail || "Failed to change password.");
+        }
+        return;
+      }
+      setCpSuccess("✅ Password changed. Redirecting to login…");
+      const idToFill = cpId;
+      setCpId("");
+      setCpCurrentPw("");
+      setCpNewPw("");
+      setCpConfirmPw("");
+      setTimeout(() => {
+        setLoginId(idToFill);
+        setShowChangePw(false);
+        setCpSuccess("");
+      }, 1500);
+    } catch {
+      setCpError("Network error. Please try again.");
+    } finally {
+      setCpLoading(false);
+    }
+  };
 
   // ── Login ────────────────────────────────────────────────────────────────────
   const handleLogin = async (e: React.FormEvent) => {
@@ -236,103 +298,213 @@ export default function AdminPage() {
               fontWeight: 600,
             }}
           >
-            🔐 Administrator Login
+            {showChangePw ? "🔑 Change Password" : "🔐 Administrator Login"}
           </h2>
-          <form
-            onSubmit={handleLogin}
-            style={{ display: "flex", flexDirection: "column", gap: "1.1rem" }}
-          >
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  marginBottom: "0.4rem",
-                  fontSize: "0.875rem",
-                  color: "var(--text-muted)",
-                }}
-              >
-                Admin ID
-              </label>
-              <input
-                id="admin-id"
-                value={loginId}
-                onChange={(e) => setLoginId(e.target.value)}
-                placeholder="ADMIN-001"
-                required
-                style={{
-                  width: "100%",
-                  padding: "0.625rem 0.875rem",
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid var(--card-border)",
-                  borderRadius: "8px",
-                  color: "var(--text)",
-                  fontSize: "0.95rem",
-                  outline: "none",
-                }}
-              />
-            </div>
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  marginBottom: "0.4rem",
-                  fontSize: "0.875rem",
-                  color: "var(--text-muted)",
-                }}
-              >
-                Password
-              </label>
-              <input
-                id="admin-password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                style={{
-                  width: "100%",
-                  padding: "0.625rem 0.875rem",
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid var(--card-border)",
-                  borderRadius: "8px",
-                  color: "var(--text)",
-                  fontSize: "0.95rem",
-                  outline: "none",
-                }}
-              />
-            </div>
-            {loginError && (
-              <p
-                style={{
-                  color: "var(--danger)",
-                  fontSize: "0.875rem",
-                  padding: "0.5rem 0.75rem",
-                  background: "rgba(239,68,68,0.08)",
-                  borderRadius: "6px",
-                  border: "1px solid rgba(239,68,68,0.2)",
-                }}
-              >
-                ❌ {loginError}
-              </p>
-            )}
-            <button
-              id="login-btn"
-              className="btn btn-primary"
-              type="submit"
-              disabled={loginLoading}
+          {showChangePw ? (
+            <form
+              onSubmit={handleChangePw}
               style={{
-                marginTop: "0.25rem",
-                justifyContent: "center",
-                fontSize: "0.95rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "1.1rem",
               }}
             >
-              {loginLoading ? (
-                <span className="animate-pulse">Authenticating…</span>
-              ) : (
-                "Login to Console →"
+              {(
+                [
+                  ["Admin ID", cpId, setCpId, "text", "ADMIN-001"],
+                  [
+                    "Current Password",
+                    cpCurrentPw,
+                    setCpCurrentPw,
+                    "password",
+                    "••••••••",
+                  ],
+                  ["New Password", cpNewPw, setCpNewPw, "password", "••••••••"],
+                  [
+                    "Confirm New Password",
+                    cpConfirmPw,
+                    setCpConfirmPw,
+                    "password",
+                    "••••••••",
+                  ],
+                ] as [string, string, (v: string) => void, string, string][]
+              ).map(([lbl, val, setter, type, ph]) => (
+                <div key={lbl}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "0.4rem",
+                      fontSize: "0.875rem",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    {lbl}
+                  </label>
+                  <input
+                    type={type}
+                    value={val}
+                    onChange={(e) => setter(e.target.value)}
+                    placeholder={ph}
+                    required
+                    style={{
+                      width: "100%",
+                      padding: "0.625rem 0.875rem",
+                      background: "rgba(255,255,255,0.05)",
+                      border: "1px solid var(--card-border)",
+                      borderRadius: "8px",
+                      color: "var(--text)",
+                      fontSize: "0.95rem",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+              ))}
+              {cpError && (
+                <p
+                  style={{
+                    color: "var(--danger)",
+                    fontSize: "0.875rem",
+                    padding: "0.5rem 0.75rem",
+                    background: "rgba(239,68,68,0.08)",
+                    borderRadius: "6px",
+                    border: "1px solid rgba(239,68,68,0.2)",
+                  }}
+                >
+                  ❌ {cpError}
+                </p>
               )}
-            </button>
-          </form>
+              {cpSuccess && (
+                <p
+                  style={{
+                    color: "var(--success)",
+                    fontSize: "0.875rem",
+                    padding: "0.5rem 0.75rem",
+                    background: "rgba(34,197,94,0.08)",
+                    borderRadius: "6px",
+                    border: "1px solid rgba(34,197,94,0.2)",
+                  }}
+                >
+                  {cpSuccess}
+                </p>
+              )}
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={cpLoading}
+                style={{
+                  marginTop: "0.25rem",
+                  justifyContent: "center",
+                  fontSize: "0.95rem",
+                }}
+              >
+                {cpLoading ? (
+                  <span className="animate-pulse">Changing…</span>
+                ) : (
+                  "Change Password"
+                )}
+              </button>
+            </form>
+          ) : (
+            <form
+              onSubmit={handleLogin}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "1.1rem",
+              }}
+            >
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: "0.4rem",
+                    fontSize: "0.875rem",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  Admin ID
+                </label>
+                <input
+                  id="admin-id"
+                  value={loginId}
+                  onChange={(e) => setLoginId(e.target.value)}
+                  placeholder="ADMIN-001"
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "0.625rem 0.875rem",
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid var(--card-border)",
+                    borderRadius: "8px",
+                    color: "var(--text)",
+                    fontSize: "0.95rem",
+                    outline: "none",
+                  }}
+                />
+              </div>
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: "0.4rem",
+                    fontSize: "0.875rem",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  Password
+                </label>
+                <input
+                  id="admin-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "0.625rem 0.875rem",
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid var(--card-border)",
+                    borderRadius: "8px",
+                    color: "var(--text)",
+                    fontSize: "0.95rem",
+                    outline: "none",
+                  }}
+                />
+              </div>
+              {loginError && (
+                <p
+                  style={{
+                    color: "var(--danger)",
+                    fontSize: "0.875rem",
+                    padding: "0.5rem 0.75rem",
+                    background: "rgba(239,68,68,0.08)",
+                    borderRadius: "6px",
+                    border: "1px solid rgba(239,68,68,0.2)",
+                  }}
+                >
+                  ❌ {loginError}
+                </p>
+              )}
+              <button
+                id="login-btn"
+                className="btn btn-primary"
+                type="submit"
+                disabled={loginLoading}
+                style={{
+                  marginTop: "0.25rem",
+                  justifyContent: "center",
+                  fontSize: "0.95rem",
+                }}
+              >
+                {loginLoading ? (
+                  <span className="animate-pulse">Authenticating…</span>
+                ) : (
+                  "Login to Console →"
+                )}
+              </button>
+            </form>
+          )}
           <p
             style={{
               marginTop: "1.25rem",
@@ -341,7 +513,48 @@ export default function AdminPage() {
               textAlign: "center",
             }}
           >
-            Admin accounts only. Student accounts will be rejected.
+            {showChangePw ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowChangePw(false);
+                  setCpError("");
+                  setCpSuccess("");
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  fontSize: "0.75rem",
+                }}
+              >
+                ← Back to Login
+              </button>
+            ) : (
+              <>
+                Admin accounts only. Student accounts will be rejected.
+                {" · "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowChangePw(true);
+                    setLoginError("");
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                    fontSize: "0.75rem",
+                  }}
+                >
+                  Change Password
+                </button>
+              </>
+            )}
           </p>
         </div>
       </main>

@@ -128,14 +128,14 @@ If services are running without the Nginx reverse proxy:
 
 The `./scripts/seed.sh` creates these accounts on first run:
 
-| Role      | Student ID     | Password        | Email               |
-| --------- | -------------- | --------------- | ------------------- |
-| **Admin** | `ADMIN-001`    | `AdminPass123!` | admin@iut.edu.bd    |
-| Student   | `STU-2021-001` | `Student1Pass!` | student1@iut.edu.bd |
-| Student   | `STU-2021-002` | `Student2Pass!` | student2@iut.edu.bd |
-| Student   | `STU-2021-003` | `Student3Pass!` | student3@iut.edu.bd |
-| Student   | `STU-2021-004` | `Student4Pass!` | student4@iut.edu.bd |
-| Student   | `STU-2021-005` | `Student5Pass!` | student5@iut.edu.bd |
+| Role      | Student ID  | Password        | Email               |
+| --------- | ----------- | --------------- | ------------------- |
+| **Admin** | `ADMIN-001` | `AdminPass123!` | admin@iut.edu.bd    |
+| Student   | `210041001` | `Student1Pass!` | student1@iut.edu.bd |
+| Student   | `210041002` | `Student2Pass!` | student2@iut.edu.bd |
+| Student   | `210041003` | `Student3Pass!` | student3@iut.edu.bd |
+| Student   | `210041004` | `Student4Pass!` | student4@iut.edu.bd |
+| Student   | `210041005` | `Student5Pass!` | student5@iut.edu.bd |
 
 ### Grafana
 
@@ -167,13 +167,13 @@ Anyone can self-register via the API:
 # Register a student
 curl -s -X POST http://localhost:8001/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"student_id":"STU-2025-001","email":"you@iut.edu.bd",
+  -d '{"student_id":"210041001","email":"you@iut.edu.bd",
        "password":"YourPass123","full_name":"Your Name","is_admin":false}'
 
 # Login (students and admins use the same endpoint)
 curl -s -X POST http://localhost:8001/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"student_id":"STU-2025-001","password":"YourPass123"}'
+  -d '{"student_id":"210041001","password":"YourPass123"}'
 ```
 
 ---
@@ -208,6 +208,10 @@ curl -s -X POST http://localhost:8001/auth/login \
 | `scripts/health-check.sh`   | Poll all `/health` endpoints and report status                               |
 | `scripts/generate-certs.sh` | Generate SSL certs (`local` = self-signed, `staging`/`prod` = Let's Encrypt) |
 | `scripts/reset.sh`          | Wipe transactional data, preserve config, restart services                   |
+| `scripts/add-admin.sh`      | Interactively create a new admin account                                     |
+| `scripts/delete-admin.sh`   | Interactively delete an admin account (requires password confirmation)       |
+| `scripts/list-admins.sh`    | List all admin accounts (ID, name, email, status)                            |
+| `scripts/create-student.sh` | Interactively create a student account (validates 9-digit IUT ID format)     |
 
 ---
 

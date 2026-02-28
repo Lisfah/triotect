@@ -3,7 +3,7 @@
 # scripts/seed.sh
 # Seeds initial CONFIGURATION DATA into the running local stack:
 #   - 1 admin account (ADMIN-001 / AdminPass123!)
-#   - 5 student accounts (STU-2021-001…005 / Student{N}Pass!)
+#   - 5 student accounts (210041001…005 / Student{N}Pass!)
 #   - 6 menu items + inventory quantities
 #
 # MECHANISM:

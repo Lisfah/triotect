@@ -5,7 +5,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class LoginRequest(BaseModel):
-    student_id: str = Field(..., min_length=1, max_length=64, examples=["STU-2021-001"])
+    student_id: str = Field(..., min_length=1, max_length=64, examples=["210041001"])
     password: str = Field(..., min_length=6, max_length=128)
 
 
@@ -37,6 +37,12 @@ class UserResponse(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+
+class ChangePasswordRequest(BaseModel):
+    student_id: str = Field(..., min_length=1, max_length=64)
+    current_password: str = Field(..., min_length=6, max_length=128)
+    new_password: str = Field(..., min_length=6, max_length=128)
 
 
 class HealthResponse(BaseModel):

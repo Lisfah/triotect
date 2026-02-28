@@ -25,6 +25,7 @@ from app.schemas.auth import (
     RefreshRequest,
     UserCreateRequest,
     UserResponse,
+    ChangePasswordRequest,
 )
 
 settings = get_settings()
@@ -106,3 +107,22 @@ async def register(payload: UserCreateRequest, db: AsyncSession = Depends(get_db
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(payload: ChangePasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Change a user's password after verifying their current password."""
+    result = await db.execute(select(User).where(User.student_id == payload.student_id))
+    user: User | None = result.scalar_one_or_none()
+
+    if not user or not verify_password(payload.current_password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid ID or current password.",
+        )
+
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled.")
+
+    user.hashed_password = hash_password(payload.new_password)
+    await db.commit()

@@ -70,6 +70,15 @@ export default function StudentPage() {
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
 
+  const [showChangePw, setShowChangePw] = useState(false);
+  const [cpId, setCpId] = useState("");
+  const [cpCurrentPw, setCpCurrentPw] = useState("");
+  const [cpNewPw, setCpNewPw] = useState("");
+  const [cpConfirmPw, setCpConfirmPw] = useState("");
+  const [cpError, setCpError] = useState("");
+  const [cpSuccess, setCpSuccess] = useState("");
+  const [cpLoading, setCpLoading] = useState(false);
+
   // ── Restore session from localStorage on mount ───────────────────────────────
   useEffect(() => {
     const saved = localStorage.getItem("student_token");
@@ -129,6 +138,59 @@ export default function StudentPage() {
       fetchHistory(token);
     }
   }, [orderStatus, token, fetchHistory]);
+
+  // ── Change Password ──────────────────────────────────────────────────────────
+  const handleChangePw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCpError("");
+    setCpSuccess("");
+    if (cpNewPw !== cpConfirmPw) {
+      setCpError("New passwords do not match.");
+      return;
+    }
+    if (cpNewPw.length < 6) {
+      setCpError("New password must be at least 6 characters.");
+      return;
+    }
+    setCpLoading(true);
+    try {
+      const r = await fetch(`${IDENTITY_URL}/auth/change-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          student_id: cpId,
+          current_password: cpCurrentPw,
+          new_password: cpNewPw,
+        }),
+      });
+      if (!r.ok) {
+        if (r.status === 422) {
+          const data = await r.json();
+          const msg = data.detail?.[0]?.msg ?? data.detail ?? "Invalid input.";
+          setCpError(typeof msg === "string" ? msg : JSON.stringify(msg));
+        } else {
+          const data = await r.json();
+          setCpError(data.detail || "Failed to change password.");
+        }
+        return;
+      }
+      setCpSuccess("✅ Password changed. Redirecting to login…");
+      const idToFill = cpId;
+      setCpId("");
+      setCpCurrentPw("");
+      setCpNewPw("");
+      setCpConfirmPw("");
+      setTimeout(() => {
+        setStudentId(idToFill);
+        setShowChangePw(false);
+        setCpSuccess("");
+      }, 1500);
+    } catch {
+      setCpError("Network error. Please try again.");
+    } finally {
+      setCpLoading(false);
+    }
+  };
 
   // ── Login ────────────────────────────────────────────────────────────────────
   const handleLogin = async (e: React.FormEvent) => {
@@ -265,51 +327,146 @@ export default function StudentPage() {
           style={{ maxWidth: "400px", margin: "0 auto" }}
         >
           <h2 style={{ marginBottom: "1.5rem", fontSize: "1.25rem" }}>
-            Student Login
+            {showChangePw ? "🔑 Change Password" : "Student Login"}
           </h2>
-          <form
-            onSubmit={handleLogin}
-            style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
-          >
-            <div>
-              <label>Student ID</label>
-              <input
-                id="student-id"
-                value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
-                placeholder="STU-2021-001"
-                required
-              />
-            </div>
-            <div>
-              <label>Password</label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-              />
-            </div>
-            {loginError && (
-              <p style={{ color: "var(--danger)", fontSize: "0.875rem" }}>
-                {loginError}
-              </p>
-            )}
-            <button
-              id="login-btn"
-              className="btn btn-primary"
-              type="submit"
-              disabled={loginLoading}
+          {showChangePw ? (
+            <form
+              onSubmit={handleChangePw}
+              style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
             >
-              {loginLoading ? (
-                <span className="animate-pulse">Logging in…</span>
-              ) : (
-                "Login →"
+              <div>
+                <label>Student ID</label>
+                <input
+                  value={cpId}
+                  onChange={(e) => setCpId(e.target.value)}
+                  placeholder="210041001"
+                  required
+                />
+              </div>
+              <div>
+                <label>Current Password</label>
+                <input
+                  type="password"
+                  value={cpCurrentPw}
+                  onChange={(e) => setCpCurrentPw(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+              <div>
+                <label>New Password</label>
+                <input
+                  type="password"
+                  value={cpNewPw}
+                  onChange={(e) => setCpNewPw(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+              <div>
+                <label>Confirm New Password</label>
+                <input
+                  type="password"
+                  value={cpConfirmPw}
+                  onChange={(e) => setCpConfirmPw(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+              {cpError && (
+                <p style={{ color: "var(--danger)", fontSize: "0.875rem" }}>
+                  {cpError}
+                </p>
               )}
+              {cpSuccess && (
+                <p style={{ color: "var(--success)", fontSize: "0.875rem" }}>
+                  {cpSuccess}
+                </p>
+              )}
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={cpLoading}
+              >
+                {cpLoading ? (
+                  <span className="animate-pulse">Changing…</span>
+                ) : (
+                  "Change Password"
+                )}
+              </button>
+            </form>
+          ) : (
+            <form
+              onSubmit={handleLogin}
+              style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+            >
+              <div>
+                <label>Student ID</label>
+                <input
+                  id="student-id"
+                  value={studentId}
+                  onChange={(e) => setStudentId(e.target.value)}
+                  placeholder="STU-2021-001"
+                  required
+                />
+              </div>
+              <div>
+                <label>Password</label>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+              {loginError && (
+                <p style={{ color: "var(--danger)", fontSize: "0.875rem" }}>
+                  {loginError}
+                </p>
+              )}
+              <button
+                id="login-btn"
+                className="btn btn-primary"
+                type="submit"
+                disabled={loginLoading}
+              >
+                {loginLoading ? (
+                  <span className="animate-pulse">Logging in…</span>
+                ) : (
+                  "Login →"
+                )}
+              </button>
+            </form>
+          )}
+          <p
+            style={{
+              marginTop: "1rem",
+              textAlign: "center",
+              fontSize: "0.8rem",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setShowChangePw(!showChangePw);
+                setCpError("");
+                setCpSuccess("");
+                setLoginError("");
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                textDecoration: "underline",
+                fontSize: "0.8rem",
+              }}
+            >
+              {showChangePw ? "← Back to Login" : "Change Password"}
             </button>
-          </form>
+          </p>
         </div>
       </main>
     );
