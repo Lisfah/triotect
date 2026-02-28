@@ -1,0 +1,65 @@
+# ── Version Control ───────────────────────────────────────────────────────────
+.git
+.gitignore
+.github
+
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Documentation & Repo Metadata ─────────────────────────────────────────────
+README.md
+*.md
+docs/
+
+# ── CI / CD ───────────────────────────────────────────────────────────────────
+.github/
+Jenkinsfile
+
+# ── Infrastructure sources (not needed inside service images) ─────────────────
+infra/
+deploy/
+scripts/
+
+# ── Local env / secrets ───────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# ── Python artefacts ──────────────────────────────────────────────────────────
+**/__pycache__/
+**/*.py[cod]
+**/*.pyo
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/htmlcov/
+**/.tox/
+**/dist/
+**/*.egg-info/
+
+# ── Node artefacts ────────────────────────────────────────────────────────────
+**/node_modules/
+**/.next/
+**/out/
+**/build/
+**/.npm/
+
+# ── Test artefacts ────────────────────────────────────────────────────────────
+**/tests/
+**/*.test.*
+**/*.spec.*
+**/coverage/
+
+# ── Temporary files ───────────────────────────────────────────────────────────
+tmp/
+*.log
+*.tmp

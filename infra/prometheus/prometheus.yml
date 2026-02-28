@@ -1,0 +1,46 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# ── Alert Rules ───────────────────────────────────────────────────────────────
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []  # Configure Alertmanager if needed
+
+# ── Scrape Configs ────────────────────────────────────────────────────────────
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "identity-provider"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["identity-provider:8001"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+
+  - job_name: "order-gateway"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["order-gateway:8002"]
+
+  - job_name: "stock-service"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["stock-service:8003"]
+
+  - job_name: "kitchen-queue"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["kitchen-queue:8004"]
+
+  - job_name: "notification-hub"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["notification-hub:8005"]

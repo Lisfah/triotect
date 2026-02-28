@@ -1,0 +1,56 @@
+# TrioTect — Global .gitignore
+# ─────────────────────────────
+
+# Environment — NEVER commit secrets
+.env
+.env.local
+.env.staging
+.env.production
+
+# SSL certificates — NEVER commit
+deploy/*/ssl/
+deploy/production/ssl/
+infra/nginx/ssl/
+scripts/*.pem
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+*.egg
+dist/
+build/
+
+# Node
+node_modules/
+.next/
+*.local
+.pnp
+.pnp.js
+npm-debug.log*
+yarn-debug.log*
+.yarn/
+
+# Docker volumes (local dev data)
+data/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test results
+test-results.xml
+coverage/
+.coverage
+htmlcov/

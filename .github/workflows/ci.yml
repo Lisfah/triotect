@@ -1,0 +1,182 @@
+name: TrioTect CI Pipeline
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main"]
+
+# Block direct pushes to main — PRs only
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/triotect
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # 1. Lint & Type Check
+  # ─────────────────────────────────────────────────────────────
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [identity-provider, order-gateway, stock-service, kitchen-queue, notification-hub]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install linting tools
+        run: pip install ruff mypy
+
+      - name: Run ruff lint
+        run: ruff check services/${{ matrix.service }}/
+        continue-on-error: false
+
+  # ─────────────────────────────────────────────────────────────
+  # 2. Integration Tests
+  # ─────────────────────────────────────────────────────────────
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-asyncio httpx redis sqlalchemy asyncpg psycopg2-binary
+
+      - name: Copy local .env for CI
+        run: |
+          cp deploy/local/.env.example deploy/local/.env
+          # Override with CI-specific values
+          sed -i 's/CHANGE_ME_AT_LEAST_32_RANDOM_CHARS_HERE/ci-jwt-secret-key-not-for-production-32chars/g' deploy/local/.env
+          sed -i 's/CHANGE_ME_IDENTITY_DB_PASS/ci_identity_pass/g' deploy/local/.env
+          sed -i 's/CHANGE_ME_STOCK_DB_PASS/ci_stock_pass/g' deploy/local/.env
+          sed -i 's/CHANGE_ME_KITCHEN_DB_PASS/ci_kitchen_pass/g' deploy/local/.env
+          sed -i 's/CHANGE_ME_GRAFANA_PASS/ci_grafana_pass/g' deploy/local/.env
+
+      - name: Start infrastructure services
+        run: |
+          docker compose -f deploy/local/docker-compose.yml up -d \
+            redis identity-db stock-db kitchen-db
+          
+      - name: Wait for databases to be healthy
+        run: |
+          for svc in identity-db stock-db kitchen-db; do
+            for i in $(seq 1 30); do
+              if docker compose -f deploy/local/docker-compose.yml exec -T $svc pg_isready; then
+                echo "$svc is ready"
+                break
+              fi
+              echo "Waiting for $svc... ($i/30)"
+              sleep 2
+            done
+          done
+
+      - name: Build and start microservices
+        run: |
+          docker compose -f deploy/local/docker-compose.yml up -d \
+            identity-provider order-gateway stock-service \
+            kitchen-queue kitchen-worker notification-hub
+
+      - name: Wait for services to be healthy
+        run: |
+          sleep 20
+          for url in \
+            "http://localhost:8001/health" \
+            "http://localhost:8002/health" \
+            "http://localhost:8003/health" \
+            "http://localhost:8005/health"; do
+            for i in $(seq 1 20); do
+              if curl -sf "$url" | grep -q '"status":"healthy"'; then
+                echo "$url is healthy"
+                break
+              fi
+              echo "Waiting for $url... ($i/20)"
+              sleep 3
+            done
+          done
+
+      - name: Run integration tests
+        run: |
+          pytest services/tests/test_integration.py \
+            -v \
+            --tb=short \
+            --junit-xml=test-results.xml \
+            -x  # Stop on first failure
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: test-results.xml
+
+      - name: Show service logs on failure
+        if: failure()
+        run: |
+          docker compose -f deploy/local/docker-compose.yml logs --tail=100
+
+      - name: Tear down services
+        if: always()
+        run: docker compose -f deploy/local/docker-compose.yml down -v
+
+  # ─────────────────────────────────────────────────────────────
+  # 3. Build & Push Docker Images
+  # ─────────────────────────────────────────────────────────────
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        service: [identity-provider, order-gateway, stock-service, kitchen-queue, notification-hub]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          tags: |
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: services/${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

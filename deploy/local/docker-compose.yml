@@ -1,0 +1,343 @@
+# TrioTect — Local Development Docker Compose
+# All services run in a single Docker network for local development.
+# Data classification:
+#   🔴 TRANSACTIONAL: orders, stock deductions, queue events, idempotency keys, rate limits
+#   🟢 CONFIG: users, menu items, initial stock quantities, Grafana dashboards
+
+name: triotect-local
+
+networks:
+  triotect-net:
+    driver: bridge
+
+volumes:
+  # 🟢 Config/persistent data volumes
+  identity-db-data:
+  stock-db-data:
+  kitchen-db-data:
+  grafana-data:
+  # 🟢 Redis data (config flags, session data)
+  redis-data:
+
+services:
+
+  # ═══════════════════════════════════════════════════════════
+  # INFRASTRUCTURE
+  # ═══════════════════════════════════════════════════════════
+
+  redis:
+    image: redis:7-alpine
+    container_name: triotect-redis
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - triotect-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  identity-db:
+    image: postgres:16-alpine
+    container_name: triotect-identity-db
+    environment:
+      POSTGRES_DB: ${IDENTITY_DB_NAME:-identity_db}
+      POSTGRES_USER: ${IDENTITY_DB_USER:-identity_user}
+      POSTGRES_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_pass}
+    volumes:
+      - identity-db-data:/var/lib/postgresql/data
+    ports:
+      - "5437:5432"
+    networks:
+      - triotect-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${IDENTITY_DB_USER:-identity_user} -d ${IDENTITY_DB_NAME:-identity_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  stock-db:
+    image: postgres:16-alpine
+    container_name: triotect-stock-db
+    environment:
+      POSTGRES_DB: ${STOCK_DB_NAME:-stock_db}
+      POSTGRES_USER: ${STOCK_DB_USER:-stock_user}
+      POSTGRES_PASSWORD: ${STOCK_DB_PASSWORD:-stock_pass}
+    volumes:
+      - stock-db-data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    networks:
+      - triotect-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${STOCK_DB_USER:-stock_user} -d ${STOCK_DB_NAME:-stock_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  kitchen-db:
+    image: postgres:16-alpine
+    container_name: triotect-kitchen-db
+    environment:
+      POSTGRES_DB: ${KITCHEN_DB_NAME:-kitchen_db}
+      POSTGRES_USER: ${KITCHEN_DB_USER:-kitchen_user}
+      POSTGRES_PASSWORD: ${KITCHEN_DB_PASSWORD:-kitchen_pass}
+    volumes:
+      - kitchen-db-data:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
+    networks:
+      - triotect-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KITCHEN_DB_USER:-kitchen_user} -d ${KITCHEN_DB_NAME:-kitchen_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════
+  # MICROSERVICES
+  # ═══════════════════════════════════════════════════════════
+
+  identity-provider:
+    build:
+      context: ../../services/identity-provider
+      dockerfile: Dockerfile
+    container_name: triotect-identity-provider
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: identity-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${IDENTITY_DB_NAME:-identity_db}
+      POSTGRES_USER: ${IDENTITY_DB_USER:-identity_user}
+      POSTGRES_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_pass}
+      REDIS_HOST: redis
+    ports:
+      - "8001:8001"
+    networks:
+      - triotect-net
+    depends_on:
+      identity-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  order-gateway:
+    build:
+      context: ../../services/order-gateway
+      dockerfile: Dockerfile
+    container_name: triotect-order-gateway
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      STOCK_SERVICE_URL: http://stock-service:8003
+      KITCHEN_QUEUE_URL: http://kitchen-queue:8004
+      NOTIFICATION_HUB_URL: http://notification-hub:8005
+    ports:
+      - "8002:8002"
+    networks:
+      - triotect-net
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  stock-service:
+    build:
+      context: ../../services/stock-service
+      dockerfile: Dockerfile
+    container_name: triotect-stock-service
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: stock-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${STOCK_DB_NAME:-stock_db}
+      POSTGRES_USER: ${STOCK_DB_USER:-stock_user}
+      POSTGRES_PASSWORD: ${STOCK_DB_PASSWORD:-stock_pass}
+      REDIS_HOST: redis
+    ports:
+      - "8003:8003"
+    networks:
+      - triotect-net
+    depends_on:
+      stock-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  kitchen-queue:
+    build:
+      context: ../../services/kitchen-queue
+      dockerfile: Dockerfile
+    container_name: triotect-kitchen-queue
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: kitchen-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${KITCHEN_DB_NAME:-kitchen_db}
+      POSTGRES_USER: ${KITCHEN_DB_USER:-kitchen_user}
+      POSTGRES_PASSWORD: ${KITCHEN_DB_PASSWORD:-kitchen_pass}
+      REDIS_HOST: redis
+      NOTIFICATION_HUB_URL: http://notification-hub:8005
+    ports:
+      - "8004:8004"
+    networks:
+      - triotect-net
+    depends_on:
+      kitchen-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  kitchen-worker:
+    build:
+      context: ../../services/kitchen-queue
+      dockerfile: Dockerfile
+    container_name: triotect-kitchen-worker
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: kitchen-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${KITCHEN_DB_NAME:-kitchen_db}
+      POSTGRES_USER: ${KITCHEN_DB_USER:-kitchen_user}
+      POSTGRES_PASSWORD: ${KITCHEN_DB_PASSWORD:-kitchen_pass}
+      REDIS_HOST: redis
+      NOTIFICATION_HUB_URL: http://notification-hub:8005
+    networks:
+      - triotect-net
+    depends_on:
+      kitchen-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  notification-hub:
+    build:
+      context: ../../services/notification-hub
+      dockerfile: Dockerfile
+    container_name: triotect-notification-hub
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+    ports:
+      - "8005:8005"
+    networks:
+      - triotect-net
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════
+  # FRONTEND
+  # ═══════════════════════════════════════════════════════════
+
+  student-ui:
+    build:
+      context: ../../frontend/student-ui
+      dockerfile: Dockerfile
+    container_name: triotect-student-ui
+    environment:
+      NEXT_PUBLIC_GATEWAY_URL: http://localhost:8002
+      NEXT_PUBLIC_NOTIFICATION_URL: http://localhost:8005
+    ports:
+      - "3000:3000"
+    networks:
+      - triotect-net
+    restart: unless-stopped
+
+  admin-dashboard:
+    build:
+      context: ../../frontend/admin-dashboard
+      dockerfile: Dockerfile
+    container_name: triotect-admin-dashboard
+    environment:
+      NEXT_PUBLIC_GATEWAY_URL: http://localhost:8002
+      NEXT_PUBLIC_PROMETHEUS_URL: http://localhost:9090
+      NEXT_PUBLIC_GRAFANA_URL: http://localhost:3002
+    ports:
+      - "3001:3001"
+    networks:
+      - triotect-net
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════
+  # OBSERVABILITY
+  # ═══════════════════════════════════════════════════════════
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: triotect-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ../../infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../../infra/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - triotect-net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: triotect-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3002
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../../infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../../infra/grafana/dashboards:/etc/grafana/dashboards:ro
+    ports:
+      - "3002:3000"
+    networks:
+      - triotect-net
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: triotect-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../../infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - triotect-net
+    depends_on:
+      - order-gateway
+      - student-ui
+      - admin-dashboard
+      - grafana
+    restart: unless-stopped

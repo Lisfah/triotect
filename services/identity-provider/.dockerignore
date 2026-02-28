@@ -1,0 +1,40 @@
+# ── Version Control ───────────────────────────────────────────────────────────
+.git
+.gitignore
+
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# ── Documentation ─────────────────────────────────────────────────────────────
+README.md
+*.md
+
+# ── Local env / secrets ───────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Python artefacts ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+dist/
+*.egg-info/
+
+# ── Tests (not needed in production image) ─────────────────────────────────────
+tests/
+
+# ── Temporary files ───────────────────────────────────────────────────────────
+*.log
+*.tmp
+tmp/

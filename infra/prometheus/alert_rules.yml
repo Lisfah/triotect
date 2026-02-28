@@ -1,0 +1,54 @@
+groups:
+  - name: triotect_alerts
+    rules:
+      # ── Gateway Latency Alert (Bonus Challenge) ─────────────────────────────
+      # Fires when average response time > 1s over 30s window
+      - alert: OrderGatewayHighLatency
+        expr: >
+          (
+            sum(rate(http_request_duration_seconds_sum{job="order-gateway"}[30s]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="order-gateway"}[30s]))
+          ) > 1.0
+        for: 10s
+        labels:
+          severity: critical
+          service: order-gateway
+        annotations:
+          summary: "Order Gateway average latency exceeds 1 second"
+          description: >
+            Order Gateway avg response time is {{ $value | humanizeDuration }} over
+            the last 30 seconds. System saturation likely.
+
+      # ── High Error Rate Alert ───────────────────────────────────────────────
+      - alert: HighErrorRate
+        expr: >
+          sum(rate(http_requests_total{status=~"5.."}[1m])) by (job)
+          /
+          sum(rate(http_requests_total[1m])) by (job) > 0.05
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx error rate in {{ $labels.job }}"
+          description: "Error rate: {{ $value | humanizePercentage }}"
+
+      # ── Service Down Alert ────────────────────────────────────────────────
+      - alert: ServiceDown
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is DOWN"
+          description: "Prometheus target {{ $labels.instance }} has been unreachable for 30s."
+
+      # ── Stock Depleted Alert ──────────────────────────────────────────────
+      - alert: LowStockWarning
+        expr: >
+          sum(rate(http_requests_total{job="stock-service", status="409"}[5m])) > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High volume of out-of-stock rejections"
