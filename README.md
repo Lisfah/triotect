@@ -58,6 +58,85 @@ Infrastructure: PostgreSQL × N · Redis · Prometheus · Grafana
 > ¹ Host ports remapped from defaults (5432/5433/5434) to avoid conflicts with any
 > existing PostgreSQL instances on the host machine.
 
+---
+
+## Prerequisites
+
+### Required Tools
+
+| Requirement        | Minimum Version | Check Command            |
+| ------------------ | --------------- | ------------------------ |
+| **Docker**         | 24.x            | `docker --version`       |
+| **Docker Compose** | 2.x (plugin)    | `docker compose version` |
+| **Git**            | 2.x             | `git --version`          |
+| **Bash**           | 4.x             | `bash --version`         |
+| **curl**           | Any             | `curl --version`         |
+| **openssl**        | 1.1.x+          | `openssl version`        |
+
+**Linux (Ubuntu/Debian):**
+
+Docker & Docker Compose:
+```bash
+# Check
+docker --version && docker compose version
+```
+If either command fails, install Docker:
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER   # allow running docker without sudo
+newgrp docker                   # apply group change without logout
+```
+
+Git:
+```bash
+# Check
+git --version
+```
+If not found, install:
+```bash
+sudo apt-get update && sudo apt-get install -y git
+```
+
+curl:
+```bash
+# Check
+curl --version
+```
+If not found, install:
+```bash
+sudo apt-get update && sudo apt-get install -y curl
+```
+
+openssl:
+```bash
+# Check
+openssl version
+```
+If not found, install:
+```bash
+sudo apt-get update && sudo apt-get install -y openssl
+```
+
+**macOS / Windows:** Install [Docker Desktop](https://www.docker.com/products/docker-desktop/). Windows users must enable the WSL 2 backend.
+
+### Hardware Recommendations
+
+| Resource | Minimum | Recommended |
+| -------- | ------- | ----------- |
+| CPU      | 2 cores | 4 cores     |
+| RAM      | 4 GB    | 8 GB        |
+| Disk     | 10 GB   | 20 GB       |
+
+### Port Availability
+
+All ports used by the platform are listed in the [Services & Ports](#services--ports) table above. Verify none are already in use before starting:
+
+```bash
+sudo ss -tlnp | grep -E '80|443|3000|3001|3002|5435|5436|5437|6379|8001|8002|8003|8004|8005|9090'
+```
+
+---
+
 ## Quick Start (Local Dev)
 
 ```bash
@@ -74,7 +153,7 @@ cp deploy/local/.env.example deploy/local/.env
 # 4. Start all services
 docker compose -f deploy/local/docker-compose.yml up -d --build
 
-# 5. Seed initial data (admin account, students, menu + inventory)
+# 5. Seed initial data (admin account, students, menu + inventory) for testing
 ./scripts/seed.sh
 
 # 6. Verify all services are up
@@ -89,6 +168,11 @@ Access the platform at:
 - **https://localhost/api/health** — API Gateway health
 - **http://localhost:3002** — Grafana (`admin` / `grafana_pass_local` for local dev; change via `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` in `.env`)
 - **http://localhost:9090** — Prometheus
+
+To stop all services:
+```bash
+docker compose -f deploy/local/docker-compose.yml down
+```
 
 ---
 
