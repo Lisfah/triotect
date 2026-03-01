@@ -139,8 +139,19 @@ sudo ss -tlnp | grep -E '80|443|3000|3001|3002|5435|5436|5437|6379|8001|8002|800
 
 ## Quick Start (Local Dev)
 
+Clone the repository if it hasn't been done yet:
 ```bash
-# 1. Clone & navigate
+git clone https://github.com/Lisfah/triotect.git
+cd triotect
+```
+
+Otherwise, pull the latest code:
+```bash
+cd triotect && git pull
+```
+
+```bash
+# 1. Navigate into the project if you aren't already inside triotect folder
 cd triotect
 
 # 2. Copy & configure environment
